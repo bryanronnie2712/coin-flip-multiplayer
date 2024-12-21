@@ -1,9 +1,10 @@
-const express = require("express");
-const http = require("http");
-const {Server} = require("socket.io");
+import "./src/redis.js"
+import express from "express";
+import * as http from "node:http";
+import { Server } from "socket.io";
 const app = express();
-const cors = require("cors");
-const { v4: uuidv4 } = require('uuid'); // Install uuid package
+import cors from "cors";
+import {v4} from "uuid";
 const generateUniqueRoomId = () => uuidv4();
 
 app.use(cors());
