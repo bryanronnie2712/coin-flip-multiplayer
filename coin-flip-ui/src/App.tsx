@@ -15,6 +15,7 @@ enum skt {
     roomJoined = "room-joined",
     error = "error",
     errorCreatingRoom = "error-creating-room",
+    errorRollingDice = "error-rolling-dice",
     errorJoiningRoom = "error-joining-room",
     diceRolled = "dice-rolled",
     aNewPlayerHasJoined = "a-new-player-has-joined",
@@ -23,16 +24,10 @@ enum skt {
 
 const App: React.FC = () => {
     const [roomInput, setInputRoom] = useState({roomId: "", playerName: ""});
-    const [output, setOutput] = useState(null);
+    // const [output, setOutput] = useState(null);
     const [playerData, setPlayerData] = useState<any[]>();
     const [roomData, setRoomData] = useState<any>();
-    // const [currentRoom, setCurrentRoom] = useState("");
-    // const [tossResult, setTossResult] = useState<string | null>(null);
-    // const [error, setError] = useState("");
 
-    // socket.on("toss-result", (result) => {
-    //   setTossResult(result);
-    // });
 
     const createRoom = () => {
         socket.emit(skt.createRoom, {room_id: roomInput.roomId, player_name: roomInput.playerName, max_capacity: 4});
@@ -46,7 +41,6 @@ const App: React.FC = () => {
         socket.emit(skt.rollDice, {room_id: roomInput.roomId, player_name: roomInput.playerName});
     }
 
-    console.log(output)
 
     useEffect(() => {
         socket.on(skt.roomCreated, (data) => {
@@ -72,6 +66,7 @@ const App: React.FC = () => {
             setPlayerData(Object.values(data?.room_data?.players).map((player) => player).sort((a: any, b: any) => a.player_number - b.player_number));
             console.log(skt.diceRolled, data)
         });
+        socket.on(skt.errorRollingDice, (errMsg) => console.log(errMsg));
 
 
         return () => {
@@ -82,6 +77,7 @@ const App: React.FC = () => {
             socket.off(skt.errorJoiningRoom);
             socket.off(skt.diceRolled);
             socket.off(skt.aNewPlayerHasJoined);
+            socket.off(skt.errorRollingDice);
         };
     }, []);
 
@@ -118,6 +114,7 @@ const App: React.FC = () => {
                     <th>Player Number</th>
                     <th>Score Array</th>
                     <th>Total</th>
+                    <th>Connection Status</th>
                 </tr>
                 </thead>
                 <tbody>
@@ -128,7 +125,8 @@ const App: React.FC = () => {
                         <td>{roomData?.max_capacity}</td>
                         <td>{player?.player_number}</td>
                         <td>{player?.score_array}</td>
-                        <td>{JSON.stringify(player?.total)}</td>
+                        <td>{player?.total}</td>
+                        <td> <div style={{display: 'flex', alignItems: "center", justifyContent: "center"}}><ConnectionStatus status="connected"/></div></td>
                     </tr>
                 ))}
                 </tbody>
@@ -137,6 +135,14 @@ const App: React.FC = () => {
         </div>
     );
 };
+
+const ConnectionStatus = styled.div<{status: string}>`
+    width: 15px;
+    height: 15px;
+    filter: drop-shadow(1px 0px 1px white);
+    border-radius: 50%;
+    background-color: ${({status}) => status === "connected" ? "green" : "red"};
+`;
 
 const TableStyle = styled.table`
     border: 1px solid #fdfffd;
@@ -151,10 +157,3 @@ const TableStyle = styled.table`
 `
 
 export default App;
-
-
-
-
-
-
-

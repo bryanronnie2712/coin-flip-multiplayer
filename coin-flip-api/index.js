@@ -19,48 +19,12 @@ const io = new Server(server, {
 });
 
 
-let currentRooms = {};
 await Redis.displayEntireDB();
 await Redis.clearRedisDatabase();
-
-const generateRandomRoomId = () => Math.floor(Math.random() * 10000);
 
 export const roomFull = (room_data) => room_data?.player_count >= room_data?.max_capacity;
 export const playerExists = (player_data, player_name) => !!player_data?.[player_name];
 export const roomExists = (room_data) => !!(room_data?.room_id);
-
-// const whichLowestPlayerNumberAvailable = async (room_id) => {
-//     await Redis.readRoomData(room_id).then((room_details) => {
-//         const max_capacity = room_details?.max_capacity;
-//         const occupied_player_numbers = new Set(Object.values(room_details?.players || []).map(p => p?.player_number));
-
-//         const possible_slots = []
-//         for (let i = 0; i < max_capacity; i++) {
-//             if (!occupied_player_numbers.has(i)) {
-//                 possible_slots.push(i)
-//             }
-//         }
-//         return Math.min(...possible_slots)
-//     }).then((lowest_available_slot) => {
-//         return lowest_available_slot;
-//     });
-// }
-
-// const updateScore = (room_id, player_name, turn_score) => {
-//   if (!roomExists(room_id)) {
-//     console.warn(`Room(${room_id}) doesn't exist!`)
-//   }
-//   else if (!playerExists(room_id, player_name)) {
-//     console.warn(`Player(${player_name}) doesn't exist!`)
-//   }
-//   else {
-//     let temp_player_details = currentRooms[room_id].players[player_name];
-//     temp_player_details["score_array"] = temp_player_details?.score_array?.push(turn_score);
-//     temp_player_details["total"] = temp_player_details?.total + turn_score;
-//
-//     currentRooms[room_id].players[player_name] = temp_player_details;
-//   }
-// }
 
 
 const whichLowestPlayerNumberAvailable = (room_data) => {
@@ -149,7 +113,7 @@ io.on("connection", (socket) => {
                 }
 
                 try {
-                    room_data.player_count +=  1;
+                    room_data.player_count += 1;
                     room_data.players[player_name] = new_player_data;
 
                     await Redis.writeRoomData(room_id, room_data);
@@ -179,19 +143,56 @@ io.on("connection", (socket) => {
 
     // Roll Dice =======================================
     socket.on("roll-dice", async (data) => {
-        const room_id = data.room_id;
-        const player_name = data.player_name;
-        const rolled_number = Math.floor(Math.random() * 6) + 1;
+        const room_id = data?.room_id;
+        const player_name = data?.player_name;
 
-        const room_data = await Redis.readRoomData(room_id);
-        room_data.players[player_name].score_array.push(rolled_number);
-        room_data.players[player_name].total += rolled_number;
+        if (!room_id || !player_name) {
+            socket.emit("error-joining-room", { msg: "Invalid data provided" });
+        }
+        else {
+            const room_data = await Redis.readRoomData(room_id);
+            const rolled_number = Math.floor(Math.random() * 6) + 1;
+            const player_data = room_data.players;
 
-        await Redis.writeRoomData(room_id, room_data);
+            if (!roomExists(room_data)) {
+                socket.emit("error-rolling-dice", { msg: "No room with this id" });
+            }
+            else if (!playerExists(player_data, player_name)) {
+                socket.emit("error-rolling-dice", { msg: "No Player exists with this id" });
+            }
+            else {
+                try {
+                    player_data[player_name].score_array.push(rolled_number);
+                    player_data[player_name].total += rolled_number;
 
-        socket.emit("dice-rolled", {
-            room_data: room_data,
-        });
+                    room_data.players = player_data;
+                    await Redis.writeRoomData(room_id, room_data);
+
+                    console.log("rollroom_data", room_data);
+
+                    socket.emit("dice-rolled", {
+                        room_data: room_data,
+                    });
+                }
+                catch (err) {
+                    console.error('Error rolling dice:', err);
+                    socket.emit("error-rolling-dice", { msg: "Error rolling dice" });
+                }
+            }
+        }
+
+
+
+
+
+
+
+
+
+
+
+
+
     })
 
     // // Handle Disconnection =============================
