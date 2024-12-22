@@ -1,10 +1,10 @@
-import "./src/redis.js"
+import * as Redis from "./src/redis/redis-actions.js"
 import express from "express";
 import * as http from "node:http";
 import { Server } from "socket.io";
 const app = express();
 import cors from "cors";
-import {v4} from "uuid";
+import { v4 } from "uuid";
 const generateUniqueRoomId = () => uuidv4();
 
 app.use(cors());
@@ -20,26 +20,31 @@ const io = new Server(server, {
 
 
 let currentRooms = {};
+await Redis.displayEntireDB();
+await Redis.clearRedisDatabase();
 
 const generateRandomRoomId = () => Math.floor(Math.random() * 10000);
-const roomExists = (room_id) => !!currentRooms?.[room_id];
-const roomFull = (room_id) => currentRooms?.[room_id]?.player_count >= currentRooms?.[room_id]?.max_capacity;
-const playerExists = (room_id, player_name) => !!currentRooms?.[room_id]?.players?.[player_name];
 
-const whichLowestPlayerNumberAvailable = (room_id) => {
-    const room_details = currentRooms?.[room_id];
-    const max_capacity = room_details?.max_capacity;
-    const occupied_player_numbers = new Set(Object.values(room_details?.players || []).map(p => p?.player_number));
+export const roomFull = (room_data) => room_data?.player_count >= room_data?.max_capacity;
+export const playerExists = (player_data, player_name) => !!player_data?.[player_name];
+export const roomExists = (room_data) => !!(room_data?.room_id);
 
-    const possible_slots = []
-    for (let i = 0; i < max_capacity; i++) {
-        if (!occupied_player_numbers.has(i)) {
-            possible_slots.push(i)
-        }
-    }
+// const whichLowestPlayerNumberAvailable = async (room_id) => {
+//     await Redis.readRoomData(room_id).then((room_details) => {
+//         const max_capacity = room_details?.max_capacity;
+//         const occupied_player_numbers = new Set(Object.values(room_details?.players || []).map(p => p?.player_number));
 
-    return Math.min(...possible_slots);
-}
+//         const possible_slots = []
+//         for (let i = 0; i < max_capacity; i++) {
+//             if (!occupied_player_numbers.has(i)) {
+//                 possible_slots.push(i)
+//             }
+//         }
+//         return Math.min(...possible_slots)
+//     }).then((lowest_available_slot) => {
+//         return lowest_available_slot;
+//     });
+// }
 
 // const updateScore = (room_id, player_name, turn_score) => {
 //   if (!roomExists(room_id)) {
@@ -58,80 +63,105 @@ const whichLowestPlayerNumberAvailable = (room_id) => {
 // }
 
 
+const whichLowestPlayerNumberAvailable = (room_data) => {
+    const players = room_data.players;
+    const playerNumbers = new Set(Object.values(players).map(player => player.player_number) || []);
+
+    for (let i = 0; i < room_data.max_capacity; i++) {
+        if (!playerNumbers.has(i)) {
+            return i;
+        }
+    }
+    // If all player numbers are taken, return -1 or handle the error as needed
+    return -1;
+}
+
 io.on("connection", (socket) => {
     // Join a room =======================================
 
-    socket.on("create-room", (data) => {
+    socket.on("create-room", async (data) => {
         const room_id = data.room_id;
         const player_name = data.player_name;
         const max_capacity = data.max_capacity;
 
-        if (!data.room_id || !data.player_name || typeof data.max_capacity !== "number") {
+        if (!data.room_id || !data.player_name || !data.max_capacity) {
             socket.emit("error-creating-room", { msg: "Invalid data provided" });
-            return;
         }
-        else if (roomExists(room_id)) {
-            socket.emit("error-creating-room", { msg: "Room exists with this id", room_data: currentRooms?.[room_id],});
-            return;
-        } else {
-            socket.join(room_id);
+        else {
+            const room_data = await Redis.readRoomData(room_id);
+            if (roomExists(room_data)) {
+                socket.emit("error-creating-room", { msg: "Room exists with this id" });
+            }
+            else {
+                socket.join(room_id);
 
-            currentRooms[room_id] = {
-                room_id: room_id,
-                player_count: 1,
-                max_capacity: max_capacity,
-                players: {
-                    [player_name]: {
-                        player_number: 0,
-                        player_name: player_name,
-                        score_array: [],
-                        total: 0
+                const temp_room_data = {
+                    room_id: room_id,
+                    player_count: 1,
+                    max_capacity: max_capacity,
+                    players: {
+                        [player_name]: {
+                            player_number: 0,
+                            player_name: player_name,
+                            score_array: [],
+                            total: 0
+                        }
                     }
                 }
-            }
 
-            socket.emit("room-created", {room_data: currentRooms[room_id], msg: "created",});
-            return;
+                await Redis.writeRoomData(room_id, temp_room_data).then(() => {
+                    socket.emit("room-created", { room_data: temp_room_data, msg: "created", });
+                });
+            }
         }
     })
 
 
     // Join a room =======================================
-    socket.on("join-room", (data) => {
+    socket.on("join-room", async (data) => {
         const room_id = data.room_id;
         const player_name = data.player_name;
 
-        console.log("roomFull(room_id)m", roomFull(room_id));
-
         if (!data.room_id || !data.player_name) {
             socket.emit("error-joining-room", { msg: "Invalid data provided" });
-            return;
         }
-        else if (!roomExists(room_id)) {
-            socket.emit("error-joining-room", { msg: "No room with this id",});
-            return;
-        } else if (playerExists(room_id, player_name)) {
-            socket.emit("error-joining-room", { msg: "Player exists with this id", room_data: currentRooms?.[room_id],});
-            return;
-        } else if (roomFull(room_id)) {
-            socket.emit("error-joining-room", { msg: "Room Full", room_data: currentRooms?.[room_id],});
-            return;
-        } else {
-            socket.join(room_id);
-
-            let new_player_data = {
-                player_number: whichLowestPlayerNumberAvailable(room_id),
-                player_name: player_name,
-                score_array: [],
-                total: 0
+        else {
+            const room_data = await Redis.readRoomData(room_id);
+            const player_data = room_data.players;
+            if (!roomExists(room_data)) {
+                socket.emit("error-joining-room", { msg: "No room with this id" });
             }
+            //  This is flawed logic, add rejoin at some point
+            else if (playerExists(player_data, player_name)) {
+                socket.emit("error-joining-room", { msg: "Player exists with this id" });
+            }
+            else if (roomFull(room_data)) {
+                socket.emit("error-joining-room", { msg: "Room Full" });
+            }
+            else {
+                socket.join(room_id);
 
-            currentRooms[room_id].player_count += 1;
-            currentRooms[room_id].players[player_name] = new_player_data;
+                let new_player_data = {
+                    player_number: whichLowestPlayerNumberAvailable(room_data),
+                    player_name: player_name,
+                    score_array: [],
+                    total: 0
+                }
 
-            socket.emit("room-joined", {room_data: currentRooms?.[room_id], msg: "joined",});
-            socket.broadcast.emit("a-new-player-has-joined", {room_data: currentRooms?.[room_id], newPlayerName: player_name, msg: "A new player joined",});
-            return;
+                try {
+                    room_data.player_count +=  1;
+                    room_data.players[player_name] = new_player_data;
+
+                    await Redis.writeRoomData(room_id, room_data);
+
+                    socket.emit("room-joined", { room_data: room_data, msg: "joined" });
+                    socket.broadcast.emit("a-new-player-has-joined", { room_data: room_data, newPlayerName: player_name, msg: "A new player joined" });
+                }
+                catch (err) {
+                    console.error('Error joining room:', err);
+                    socket.emit("error-joining-room", { msg: "Error joining room" });
+                }
+            }
         }
     })
 
@@ -148,18 +178,19 @@ io.on("connection", (socket) => {
     // );
 
     // Roll Dice =======================================
-    socket.on("roll-dice", (data) => {
+    socket.on("roll-dice", async (data) => {
         const room_id = data.room_id;
         const player_name = data.player_name;
         const rolled_number = Math.floor(Math.random() * 6) + 1;
-        const score_array = currentRooms[room_id]?.players[player_name]?.score_array + [rolled_number];
-        const total = currentRooms[room_id]?.players[player_name]?.total + rolled_number;
 
-        currentRooms[room_id].players[player_name].score_array = score_array;
-        currentRooms[room_id].players[player_name].total = total;
+        const room_data = await Redis.readRoomData(room_id);
+        room_data.players[player_name].score_array.push(rolled_number);
+        room_data.players[player_name].total += rolled_number;
+
+        await Redis.writeRoomData(room_id, room_data);
 
         socket.emit("dice-rolled", {
-            room_data: currentRooms,
+            room_data: room_data,
         });
     })
 
@@ -180,18 +211,6 @@ io.on("connection", (socket) => {
     //         }
     //     }
     // });
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 

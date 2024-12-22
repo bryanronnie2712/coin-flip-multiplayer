@@ -67,7 +67,11 @@ const App: React.FC = () => {
         socket.on(skt.error, (errMsg) => console.log(errMsg));
         socket.on(skt.errorCreatingRoom, (errMsg) => console.log(errMsg));
         socket.on(skt.errorJoiningRoom, (errMsg) => console.log(errMsg));
-        socket.on(skt.diceRolled, (data) => console.log(data));
+        socket.on(skt.diceRolled, (data) => {
+            setRoomData(data?.room_data);
+            setPlayerData(Object.values(data?.room_data?.players).map((player) => player).sort((a: any, b: any) => a.player_number - b.player_number));
+            console.log(skt.diceRolled, data)
+        });
 
 
         return () => {
@@ -123,26 +127,13 @@ const App: React.FC = () => {
                         <td>{player?.player_name}</td>
                         <td>{roomData?.max_capacity}</td>
                         <td>{player?.player_number}</td>
-                        <td>{JSON.stringify(player?.score_array)}</td>
+                        <td>{player?.score_array}</td>
                         <td>{JSON.stringify(player?.total)}</td>
                     </tr>
                 ))}
                 </tbody>
             </TableStyle>
 
-            {output}
-
-
-            {/* {error && <p style={{ color: "red" }}>{error}</p>} */}
-
-            {/* {currentRoom && (
-        <>
-          <h2>Room: {currentRoom}</h2>
-          <button onClick={tossCoin}>Toss Coin</button>
-        </>
-      )} */}
-
-            {/* {tossResult && <h3>Result: {tossResult}</h3>} */}
         </div>
     );
 };
