@@ -101,24 +101,25 @@ const App: React.FC = () => {
 
             <h1>Multiplayer Coin Toss Game</h1>
 
-            <input
-                type="text"
-                value={roomInput.roomId}
-                onChange={(e) => setInputRoom({ ...roomInput, roomId: e.target.value })}
-                placeholder="Enter room name"
-            />
+            <div style={{ display: "flex", alignItems: "center",justifyContent:"space-between", marginBottom: 20 }}>
+                <input
+                    type="text"
+                    value={roomInput.roomId}
+                    onChange={(e) => setInputRoom({ ...roomInput, roomId: e.target.value })}
+                    placeholder="Enter room name"
+                />
 
-            <input
-                type="text"
-                value={roomInput.playerName}
-                onChange={(e) => setInputRoom({ ...roomInput, playerName: e.target.value })}
-                placeholder="Enter player name"
-            />
+                <input
+                    type="text"
+                    value={roomInput.playerName}
+                    onChange={(e) => setInputRoom({ ...roomInput, playerName: e.target.value })}
+                    placeholder="Enter player name"
+                />
 
-            <button onClick={createRoom}>Create Room</button>
-            <button onClick={joinRoom}>Join Room</button>
-            {<button onClick={rollDice}>Roll Dice</button>}
-
+                <button onClick={createRoom}>Create Room</button>
+                <button onClick={joinRoom}>Join Room</button>
+                {<button onClick={rollDice}>Roll Dice</button>}
+            </div>
 
             <TableStyle className="table1">
                 <thead>
@@ -164,7 +165,7 @@ const TableStyle = styled.table`
     border: 1px solid #fdfffd;
     border-collapse: collapse;
     padding: 10px;
-    margin: 30px;
+    margin: 30px 0;
 
     th, td {
         border: 1px solid #fdfffd;
