@@ -112,13 +112,22 @@ io.on("connection", (socket) => {
             if (!roomExists(room_data)) {
                 socket.emit("error-joining-room", { msg: "No room with this id" });
             }
-            //  This is flawed logic, add rejoin at some point
-            else if (playerExists(player_data, player_name)) {
-                socket.emit("error-joining-room", { msg: "Player exists with this id" });
-            }
             else if (roomFull(room_data)) {
                 socket.emit("error-joining-room", { msg: "Room Full" });
             }
+            //  This is flawed logic, add rejoin at some point
+            else if (playerExists(player_data, player_name)) {
+                if(connection_status[room_id]?.[player_name]?.status === "connected"){
+                    socket.emit("error-joining-room", { msg: "Player is connected to this room" });
+                }
+                else{
+                    socket.join(room_id);
+                    connection_status[room_id][player_name].status = "connected";
+                    socket.emit("room-joined", { room_data: room_data, msg: "rejoined", connection_status: connection_status[room_id] });
+                    socket.broadcast.emit("a-new-player-has-joined", { room_data: room_data, newPlayerName: player_name, msg: "rejoined", connection_status: connection_status[room_id] });
+                }
+                
+            }            
             else {
                 socket.join(room_id);
 
