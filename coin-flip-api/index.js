@@ -40,6 +40,11 @@ const whichLowestPlayerNumberAvailable = (room_data) => {
     return -1;
 }
 
+const connection_status = {}
+const socketIdToPlayerName = {
+    // key: socketId, value: store room_id and player_name
+};
+
 io.on("connection", (socket) => {
     // Join a room =======================================
 
@@ -73,9 +78,21 @@ io.on("connection", (socket) => {
                     }
                 }
 
-                await Redis.writeRoomData(room_id, temp_room_data).then(() => {
-                    socket.emit("room-created", { room_data: temp_room_data, msg: "created", });
-                });
+
+                const temp = connection_status?.[room_id] || {};
+                temp[player_name] = {
+                    player_name: player_name,
+                    room_id: room_id,
+                    status: "connected",
+                    last_seen: new Date(),
+                }
+                connection_status[room_id] = temp;
+
+                socketIdToPlayerName[socket.id] = { room_id: room_id, player_name: player_name };
+
+                await Redis.writeRoomData(room_id, temp_room_data)
+                socket.emit("room-created", { room_data: temp_room_data, msg: "created", connection_status: temp });
+
             }
         }
     })
@@ -116,10 +133,22 @@ io.on("connection", (socket) => {
                     room_data.player_count += 1;
                     room_data.players[player_name] = new_player_data;
 
-                    await Redis.writeRoomData(room_id, room_data);
+                    const temp = connection_status?.[room_id] || {};
+                    temp[player_name] = {
+                        player_name: player_name,
+                        room_id: room_id,
+                        status: "connected",
+                        last_seen: new Date(),
+                    }
+                    connection_status[room_id] = temp;
 
-                    socket.emit("room-joined", { room_data: room_data, msg: "joined" });
-                    socket.broadcast.emit("a-new-player-has-joined", { room_data: room_data, newPlayerName: player_name, msg: "A new player joined" });
+                    socketIdToPlayerName[socket.id] = { room_id: room_id, player_name: player_name };
+
+                    await Redis.writeRoomData(room_id, room_data);
+                    socket.emit("room-joined", { room_data: room_data, msg: "joined", connection_status: temp });
+                    socket.broadcast.emit("a-new-player-has-joined", { room_data: room_data, newPlayerName: player_name, msg: "A new player joined", connection_status: temp });
+
+
                 }
                 catch (err) {
                     console.error('Error joining room:', err);
@@ -129,17 +158,37 @@ io.on("connection", (socket) => {
         }
     })
 
-    // Live connection status =============================
+    // Live connection status(DON'T DELETE THIS) =============================
+
     // socket.on("connection-status", (data) => {
-    //       try{
-    //           socket.emit("connection-status-reply", {connection_status: "connected"})
-    //       }
-    //       catch(e){
-    //           console.log("e", e);
-    //       }
-    //   },
-    //   5000
-    // );
+    //     try {
+    //         const player_name = data.player_name;
+    //         const room_id = data.room_id;
+
+    //         const temp = connection_status?.[room_id] || {};
+    //         temp[player_name] = {
+    //             player_name: player_name,
+    //             room_id: room_id,
+    //             status: data.status,
+    //             last_seen: new Date(),
+    //         }
+    //         connection_status[room_id] = temp;
+
+    //         // console.log("connection_status", connection_status);
+
+    //         // socket.emit("connection-status-reply",  temp );
+    //         // socket.broadcast.emit("connection-status-reply", temp);
+    //         // socket.to(room_id).emit('connection-status-reply', temp);
+
+    //         io.in(room_id).emit('connection-status-reply', temp);
+
+
+    //     } catch (e) {
+    //         console.log("e", e);
+    //     }
+    // });
+
+
 
     // Roll Dice =======================================
     socket.on("roll-dice", async (data) => {
@@ -180,38 +229,18 @@ io.on("connection", (socket) => {
                 }
             }
         }
-
-
-
-
-
-
-
-
-
-
-
-
-
     })
 
     // // Handle Disconnection =============================
-    // socket.on("disconnect", (data) => {
-    //     const room_id = [...socket.rooms][1]; // Get the room ID the player joined
-    //     if (room_id && currentRooms[room_id]) {
-    //         const player_name = Object.keys(currentRooms[room_id].players).find(
-    //             (p) => currentRooms[room_id].players[p].socket_id === socket.id
-    //         );
-    //         if (player_name) {
-    //             delete currentRooms[room_id].players[player_name];
-    //             currentRooms[room_id].player_count -= 1;
-    //
-    //             if (currentRooms[room_id].player_count === 0) {
-    //                 delete currentRooms[room_id]; // Delete the room if empty
-    //             }
-    //         }
-    //     }
-    // });
+    socket.on("disconnect", () => {
+        const room_id = socketIdToPlayerName[socket.id]?.room_id;
+        const player_name = socketIdToPlayerName[socket.id]?.player_name;
+
+        if (!!room_id || !!player_name) {
+            connection_status[room_id][player_name].status = "disconnected";
+            io.emit("playerDisconnected", connection_status[room_id]); // Notify specifically about disconnection
+        }
+    });
 
 
 
